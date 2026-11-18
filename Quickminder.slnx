@@ -1,0 +1,5 @@
+<Solution>
+  <Project Path="src/Quickminder.Core/Quickminder.Core.csproj" />
+  <Project Path="src/Quickminder/Quickminder.csproj" />
+  <Project Path="tests/Quickminder.Tests/Quickminder.Tests.csproj" />
+</Solution>
