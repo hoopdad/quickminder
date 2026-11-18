@@ -55,8 +55,17 @@ try {
     $iceValidation = if ($installerLog -match 'WIX1105') {
         'Unavailable: Windows system policy blocked WiX ICE validation (WIX1105). No suppression or elevation used.'
     } else { 'WiX ICE validation completed.' }
-    $unexpectedWarnings = @(Select-String -Path (Join-Path $output 'installer.log') -Pattern 'warning (?!WIX1105)\w+\d+:')
+    $warningLines = @(Select-String -Path (Join-Path $output 'installer.log') -Pattern 'warning \w+\d+:')
+    # ICE91 is harmless only for per-user-only packages; enforce that contract below.
+    $expectedIce91 = "warning WIX1076: ICE91: The file 'QuickminderExe' will be installed to the per user directory 'INSTALLFOLDER'"
+    $unexpectedWarnings = @($warningLines | Where-Object {
+        $_.Line -notmatch 'warning WIX1105:' -and !$_.Line.Contains($expectedIce91)
+    })
     if ($unexpectedWarnings.Count -gt 0) { throw "Unexpected installer warnings. See $output\installer.log" }
+    $iceWarnings = @()
+    if ($installerLog.Contains($expectedIce91)) {
+        $iceWarnings = @('ICE91: expected for per-user-only LocalAppData install; ALLUSERS is blocked. https://learn.microsoft.com/en-us/windows/win32/msi/ice91')
+    }
 
     $windowsInstaller = New-Object -ComObject WindowsInstaller.Installer
     $database = $windowsInstaller.OpenDatabase($msi, 0)
@@ -81,6 +90,9 @@ try {
         }
         if (Read-MsiValue 'SELECT `Value` FROM `Property` WHERE `Property` = ''ALLUSERS''') {
             throw 'MSI must install per-user, not per-machine.'
+        }
+        if (!(Read-MsiValue 'SELECT `Description` FROM `LaunchCondition` WHERE `Condition` = ''NOT ALLUSERS''')) {
+            throw 'MSI must explicitly reject machine-wide installation.'
         }
         if ((Read-MsiValue 'SELECT `Directory_Parent` FROM `Directory` WHERE `Directory` = ''UserProgramsFolder''') -ne 'LocalAppDataFolder' -or
             (Read-MsiValue 'SELECT `Directory_Parent` FROM `Directory` WHERE `Directory` = ''INSTALLFOLDER''') -ne 'UserProgramsFolder') {
@@ -133,6 +145,7 @@ try {
         installer = 'WiX 5.0.2; per-user MSI; no auto-start; preserves notes and preferences on uninstall'
         verification = 'Regression executable passed; single-file payload verified; MSI version, per-user scope, install path, Start shortcut and absence of custom actions checked; administrative extraction matches published EXE SHA-256'
         iceValidation = $iceValidation
+        iceWarnings = $iceWarnings
         signing = 'Unsigned; no signing certificate configured'
         artifacts = $artifacts
     } | ConvertTo-Json -Depth 5 | Set-Content $record -Encoding utf8
@@ -141,6 +154,7 @@ try {
     } | Set-Content (Join-Path $output 'SHA256SUMS.txt') -Encoding ascii
     Write-Output "Release artifacts: $output"
     if ($installerLog -match 'WIX1105') { Write-Warning $iceValidation }
+    foreach ($warning in $iceWarnings) { Write-Warning $warning }
     if ($changes) { Write-Warning 'Built from uncommitted changes. Validation only; do not publish this build.' }
 }
 finally {

@@ -3,6 +3,7 @@
            Version="$(var.AppVersion)" UpgradeCode="7C9F182D-F963-460B-9A08-A84EE5BB6086"
            Scope="perUser">
     <MajorUpgrade DowngradeErrorMessage="A newer version of Quickminder is already installed." />
+    <Launch Condition="NOT ALLUSERS" Message="Quickminder supports per-user installation only. Do not set ALLUSERS." />
     <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
     <Property Id="ARPURLINFOABOUT" Value="https://github.com/hoopdad/quickminder" />
     <Property Id="ARPNOMODIFY" Value="1" />

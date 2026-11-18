@@ -157,6 +157,9 @@ Diagnostics are retained alongside the artifacts under `artifacts\release\<versi
 For a retry, choose a fresh `-OutputDirectory` rather than mixing build outputs.
 WiX also attempts ICE validation; if Windows policy blocks it, the script reports
 that limitation and records it in `release-record.json` rather than claiming it passed.
+ICE91's warning about per-user-only files is expected: this installer explicitly
+rejects machine-wide installation. It is recorded, not suppressed
+([Microsoft's guidance](https://learn.microsoft.com/en-us/windows/win32/msi/ice91)).
 
 Publish only from clean, committed, reviewed `main` source, tagging that exact
 commit as `v<version>`. Attach the MSI, portable ZIP, checksums and release record
