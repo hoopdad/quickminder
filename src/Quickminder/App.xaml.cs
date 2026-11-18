@@ -18,13 +18,25 @@ public partial class App : Application
     private Forms.NotifyIcon? tray;
     private Icon? trayIcon;
     private MainWindow? popup;
+    private bool isDemo;
     private readonly string settingsPath = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Quickminder", "settings.json");
 
     protected override void OnStartup(StartupEventArgs e)
     {
         base.OnStartup(e);
-        mutex = new Mutex(true, @"Local\Quickminder.App", out var first);
-        activation = new EventWaitHandle(false, EventResetMode.AutoReset, @"Local\Quickminder.Open");
+        isDemo = e.Args.Length > 0 && e.Args[0] == "--demo";
+        string? screenshotDirectory = null;
+        if (e.Args.Length != 0 && !(isDemo && (e.Args.Length == 1 ||
+            (e.Args.Length == 3 && e.Args[1] == "--screenshots" && Path.IsPathFullyQualified(e.Args[2])))))
+        {
+            MessageBox.Show("Usage: Quickminder.exe [--demo [--screenshots <absolute output folder>]]", "Quickminder", MessageBoxButton.OK, MessageBoxImage.Error);
+            Shutdown(1);
+            return;
+        }
+        if (e.Args.Length == 3) screenshotDirectory = e.Args[2];
+        var instanceName = isDemo ? "Quickminder.Demo" : "Quickminder";
+        mutex = new Mutex(true, $@"Local\{instanceName}.App", out var first);
+        activation = new EventWaitHandle(false, EventResetMode.AutoReset, $@"Local\{instanceName}.Open");
         if (!first)
         {
             activation.Set();
@@ -36,13 +48,15 @@ public partial class App : Application
         {
             string? directory = null;
             var playCopySound = true;
-            if (File.Exists(settingsPath))
+            if (!isDemo && File.Exists(settingsPath))
             {
                 var preferences = JsonSerializer.Deserialize<Preferences>(File.ReadAllText(settingsPath));
                 directory = preferences?.NotesDirectory;
                 playCopySound = preferences?.PlayCopySound ?? true;
             }
-            directory ??= NoteStore.FindDefaultDirectory();
+            directory ??= isDemo
+                ? Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData), "Quickminder", "Demo", "Notes")
+                : NoteStore.FindDefaultDirectory();
             if (directory is null)
             {
                 MessageBox.Show("No local OneDrive folder was found. Choose your synced Quickminder folder. Notes stay on this computer unless the selected folder is synced.", "Quickminder", MessageBoxButton.OK, MessageBoxImage.Information);
@@ -53,7 +67,9 @@ public partial class App : Application
                 Shutdown();
                 return;
             }
-            popup = new MainWindow(new NoteStore(directory)) { PlayCopySound = playCopySound };
+            var store = new NoteStore(directory);
+            if (isDemo) SampleNotes.SeedIfEmpty(store);
+            popup = new MainWindow(store, isDemo, screenshotDirectory) { PlayCopySound = playCopySound };
             MainWindow = popup;
             SavePreferences(directory);
             CreateTray();
@@ -71,7 +87,7 @@ public partial class App : Application
     private void CreateTray()
     {
         trayIcon = CreateIcon();
-        tray = new Forms.NotifyIcon { Icon = trayIcon, Text = "Quickminder - click for notes", Visible = true };
+        tray = new Forms.NotifyIcon { Icon = trayIcon, Text = isDemo ? "Quickminder - sample notes" : "Quickminder - click for notes", Visible = true };
         tray.MouseClick += (_, e) =>
         {
             if (e.Button == Forms.MouseButtons.Left)
@@ -83,7 +99,7 @@ public partial class App : Application
         var menu = new Forms.ContextMenuStrip();
         menu.Items.Add("Open Quickminder", null, (_, _) => popup!.ShowPopup());
         menu.Items.Add("Open notes folder", null, (_, _) => OpenFolder());
-        menu.Items.Add("Choose notes folder...", null, (_, _) => ChangeDirectory());
+        menu.Items.Add("Choose notes folder...", null, (_, _) => ChangeDirectory()).Enabled = !isDemo;
         var sound = new Forms.ToolStripMenuItem("Sound on copy and hide") { Checked = popup!.PlayCopySound, CheckOnClick = true };
         sound.Click += (_, _) =>
         {
@@ -163,6 +179,7 @@ public partial class App : Application
 
     private void SavePreferences(string directory)
     {
+        if (isDemo) return;
         Directory.CreateDirectory(Path.GetDirectoryName(settingsPath)!);
         var temporary = settingsPath + ".tmp";
         File.WriteAllText(temporary, JsonSerializer.Serialize(new Preferences(directory, popup?.PlayCopySound ?? true)));

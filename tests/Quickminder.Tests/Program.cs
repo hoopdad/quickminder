@@ -52,6 +52,20 @@ try
     foreach (var invalid in new[] { "https://", "http-not-a-url description", "file:///C:/Windows/notepad.exe", "javascript:alert(1)", " https://example.com", "https://example.com\tlabel", "" })
         Assert(NoteLinks.GetLaunchUri(invalid) is null, "Only valid leading HTTP(S) tokens become launch actions");
 
+    var demoStore = new NoteStore(Path.Combine(directory, "demo"));
+    SampleNotes.SeedIfEmpty(demoStore);
+    Assert(demoStore.List().Count == 3 && demoStore.List().All(sample => sample.Text.Contains("Fictional sample data.")),
+        "Demo starts with three clearly fictional notes");
+    var demoNote = demoStore.List()[0];
+    demoStore.Save(demoNote, "My edited sample");
+    SampleNotes.SeedIfEmpty(demoStore);
+    Assert(demoStore.List().Count == 3 && demoStore.Read(demoNote.FileName).Text == "My edited sample",
+        "Restarting demo does not duplicate notes or overwrite edits");
+    var occupiedStore = new NoteStore(Path.Combine(directory, "occupied"));
+    occupiedStore.Create("Existing note");
+    SampleNotes.SeedIfEmpty(occupiedStore);
+    Assert(occupiedStore.List().Single().Text == "Existing note", "Sample seeding leaves nonempty folders alone");
+
     var variables = new[] { "OneDriveCommercial", "OneDriveConsumer", "OneDrive" };
     var previous = variables.Select(Environment.GetEnvironmentVariable).ToArray();
     try

@@ -1,0 +1,31 @@
+<Wix xmlns="http://wixtoolset.org/schemas/v4/wxs">
+  <Package Name="Quickminder" Manufacturer="Quickminder"
+           Version="$(var.AppVersion)" UpgradeCode="7C9F182D-F963-460B-9A08-A84EE5BB6086"
+           Scope="perUser">
+    <MajorUpgrade DowngradeErrorMessage="A newer version of Quickminder is already installed." />
+    <MediaTemplate EmbedCab="yes" CompressionLevel="high" />
+    <Property Id="ARPURLINFOABOUT" Value="https://github.com/hoopdad/quickminder" />
+    <Property Id="ARPNOMODIFY" Value="1" />
+    <StandardDirectory Id="LocalAppDataFolder">
+      <Directory Id="UserProgramsFolder" Name="Programs">
+        <Directory Id="INSTALLFOLDER" Name="Quickminder">
+          <Component Id="Application" Guid="6525388E-17D5-4817-84C9-EF56865E2C89">
+            <File Id="QuickminderExe" Source="$(var.PayloadDirectory)\Quickminder.exe" />
+            <RegistryValue Root="HKCU" Key="Software\Quickminder\Installer" Name="Installed" Type="integer" Value="1" KeyPath="yes" />
+            <Shortcut Id="StartMenuShortcut" Directory="QuickminderMenu" Name="Quickminder"
+                      Target="[#QuickminderExe]" WorkingDirectory="INSTALLFOLDER" />
+            <RemoveFolder Id="RemoveMenu" Directory="QuickminderMenu" On="uninstall" />
+            <RemoveFolder Id="RemoveInstallFolder" Directory="INSTALLFOLDER" On="uninstall" />
+            <RemoveFolder Id="RemoveProgramsFolder" Directory="UserProgramsFolder" On="uninstall" />
+          </Component>
+        </Directory>
+      </Directory>
+    </StandardDirectory>
+    <StandardDirectory Id="ProgramMenuFolder">
+      <Directory Id="QuickminderMenu" Name="Quickminder" />
+    </StandardDirectory>
+    <Feature Id="Main" Title="Quickminder" Level="1">
+      <ComponentRef Id="Application" />
+    </Feature>
+  </Package>
+</Wix>
