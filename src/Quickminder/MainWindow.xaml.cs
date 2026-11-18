@@ -9,6 +9,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 using Quickminder.Core;
 
@@ -20,16 +21,21 @@ public partial class MainWindow : Window
     private Note? selected;
     private bool loading;
     private bool unsaved;
+    private readonly bool isDemo;
+    private readonly string? screenshotDirectory;
     private IReadOnlyList<NoteLine> lines = NoteLine.Parse("");
     private FileSystemWatcher? watcher;
     private readonly DispatcherTimer refreshTimer = new() { Interval = TimeSpan.FromMilliseconds(180) };
     public string NotesDirectory => store.DirectoryPath;
     public bool PlayCopySound { get; set; } = true;
 
-    public MainWindow(NoteStore store)
+    public MainWindow(NoteStore store, bool isDemo = false, string? screenshotDirectory = null)
     {
         this.store = store;
+        this.isDemo = isDemo;
+        this.screenshotDirectory = isDemo ? screenshotDirectory : null;
         InitializeComponent();
+        if (isDemo) Title = "Quickminder - sample notes";
         Editor.Padding = new Thickness(3, 4, 3, Math.Ceiling(Editor.FontFamily.LineSpacing * Editor.FontSize));
         refreshTimer.Tick += (_, _) => { refreshTimer.Stop(); RefreshFromDisk(); };
         ConfigureWatcher();
@@ -71,7 +77,7 @@ public partial class MainWindow : Window
 
     private void ConfigureWatcher()
     {
-        FolderLabel.Text = store.DirectoryPath;
+        FolderLabel.Text = isDemo ? "Sample notes (local demo)" : store.DirectoryPath;
         FolderLabel.ToolTip = store.DirectoryPath;
         watcher = new FileSystemWatcher(store.DirectoryPath)
         {
@@ -325,6 +331,40 @@ public partial class MainWindow : Window
     {
         if (e.Key == Key.Escape) { HideSafely(); e.Handled = true; }
         else if (e.Key == Key.N && Keyboard.Modifiers == ModifierKeys.Control) { New_Click(this, new RoutedEventArgs()); e.Handled = true; }
+        else if (e.Key == Key.F12 && screenshotDirectory is not null)
+        {
+            SaveScreenshot();
+            e.Handled = true;
+        }
+    }
+
+    private void SaveScreenshot()
+    {
+        try
+        {
+            Directory.CreateDirectory(screenshotDirectory!);
+            var surface = (FrameworkElement)Content;
+            surface.UpdateLayout();
+            var dpi = VisualTreeHelper.GetDpi(surface);
+            var bitmap = new RenderTargetBitmap(
+                (int)Math.Ceiling(surface.ActualWidth * dpi.DpiScaleX),
+                (int)Math.Ceiling(surface.ActualHeight * dpi.DpiScaleY),
+                dpi.PixelsPerInchX, dpi.PixelsPerInchY, PixelFormats.Pbgra32);
+            var background = new DrawingVisual();
+            using (var drawing = background.RenderOpen())
+                drawing.DrawRectangle(Background, null, new Rect(surface.RenderSize));
+            bitmap.Render(background);
+            bitmap.Render(surface);
+            var encoder = new PngBitmapEncoder();
+            encoder.Frames.Add(BitmapFrame.Create(bitmap));
+            var path = Path.Combine(screenshotDirectory!, selected is null ? "notes-stack.png" : "note-editor.png");
+            using (var output = File.Create(path)) encoder.Save(output);
+            SetStatus($"Screenshot saved: {Path.GetFileName(path)}");
+        }
+        catch (Exception ex) when (IsStorageError(ex) || ex is NotSupportedException)
+        {
+            ShowError($"Could not save screenshot: {ex.Message}");
+        }
     }
 
     private void Folder_Click(object sender, RoutedEventArgs e)
